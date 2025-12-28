@@ -1,9 +1,11 @@
-use crate::mpd::SongInfo;
+use std::fs::File;
+
+use crate::{cache, mpd::SongInfo};
 use anyhow::Result;
 use bytes::BytesMut;
-use image::{GenericImageView, imageops::FilterType};
+use image::{GenericImageView, codecs::jpeg::JpegEncoder, imageops::FilterType};
 use mpd_client::responses::PlayState;
-use notify_rust::{Image, Notification, NotificationHandle};
+use notify_rust::{Hint, Image, Notification, NotificationHandle};
 
 pub fn init(song: SongInfo) -> Result<Notification> {
     let mut n = Notification::new()
@@ -16,7 +18,7 @@ pub fn init(song: SongInfo) -> Result<Notification> {
         .finalize();
 
     if let Some(art) = song.album_art {
-        n.image_data(to_image(&art)?);
+        n.hint(image_to_hint(&art)?);
     }
 
     Ok(n)
@@ -26,15 +28,31 @@ pub fn update(handle: &mut NotificationHandle, song: SongInfo) -> Result<Notific
     Ok(init(song)?.id(handle.id()).show()?)
 }
 
-fn to_image(bytes: &BytesMut) -> Result<Image> {
+fn image_to_hint(bytes: &BytesMut) -> Result<Hint> {
+    let cached = cache::get_cached_image_path(bytes);
+
+    if let Ok(path) = &cached
+        && path.exists()
+    {
+        return Ok(Hint::ImagePath(path.to_string_lossy().to_string()));
+    }
+
     let mut image = image::load_from_memory(bytes)?;
     image = image.resize(128, 128, FilterType::Gaussian);
 
-    let (width, height) = image.dimensions();
+    if let Ok(path) = cached {
+        let file = File::create(&path)?;
+        let encoder = JpegEncoder::new_with_quality(file, 90);
+        image.write_with_encoder(encoder)?;
 
-    Ok(Image::from_rgb(
-        width.cast_signed(),
-        height.cast_signed(),
-        image.into_bytes(),
-    )?)
+        Ok(Hint::ImagePath(path.to_string_lossy().to_string()))
+    } else {
+        let (width, height) = image.dimensions();
+
+        Ok(Hint::ImageData(Image::from_rgb(
+            width.cast_signed(),
+            height.cast_signed(),
+            image.into_bytes(),
+        )?))
+    }
 }
