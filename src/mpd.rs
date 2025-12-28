@@ -30,12 +30,55 @@ pub async fn connect_to_mpd() -> Result<()> {
     Ok(())
 }
 
+async fn get_image(client: &Client, uri: &str) -> Result<Option<BytesMut>> {
+    let mut out = BytesMut::new();
+    let mut expected_size = 0;
+    let mut from_file = false;
+
+    if let Some(resp) = client.command(commands::AlbumArt::new(uri)).await? {
+        out = resp.data;
+        expected_size = resp.size;
+        out.reserve(expected_size);
+        from_file = true;
+    }
+
+    if !from_file {
+        if let Some(resp) = client.command(commands::AlbumArt::new(uri)).await? {
+            out = resp.data;
+            expected_size = resp.size;
+            out.reserve(expected_size);
+        } else {
+            return Ok(None);
+        }
+    }
+
+    while out.len() < expected_size {
+        let resp = if from_file {
+            client
+                .command(commands::AlbumArt::new(uri).offset(out.len()))
+                .await?
+        } else {
+            client
+                .command(commands::AlbumArtEmbedded::new(uri).offset(out.len()))
+                .await?
+        };
+
+        if let Some(resp) = resp {
+            out.extend_from_slice(&resp.data);
+        } else {
+            return Ok(None);
+        }
+    }
+
+    Ok(Some(out))
+}
+
 pub struct SongInfo {
     pub state: PlayState,
     pub artist: String,
     pub album: String,
     pub title: String,
-    pub album_art: Option<(BytesMut, Option<String>)>,
+    pub album_art: Option<BytesMut>,
 }
 
 impl SongInfo {
@@ -59,7 +102,7 @@ impl SongInfo {
             artist: song.artists().join(", "),
             album: song.album().unwrap_or_default().to_owned(),
             title: song.title().unwrap_or_default().to_owned(),
-            album_art: client.album_art(&song.url).await?,
+            album_art: get_image(client, &song.url).await?,
         })
     }
 

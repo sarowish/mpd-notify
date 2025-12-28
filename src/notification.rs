@@ -15,7 +15,7 @@ pub fn init(song: SongInfo) -> Result<Notification> {
         .timeout(5000)
         .finalize();
 
-    if let Some((art, _)) = song.album_art {
+    if let Some(art) = song.album_art {
         n.image_data(to_image(&art)?);
     }
 
