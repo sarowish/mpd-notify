@@ -13,3 +13,9 @@ image = "0.25.9"
 mpd_client = "1.4.1"
 notify-rust = { version = "4.11.7", features = ["images"] }
 tokio = { version = "1.48.0", features = ["full"] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
