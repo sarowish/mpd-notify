@@ -40,14 +40,14 @@
         mpd-notify = craneLib.buildPackage {
           src = craneLib.cleanCargoSource ./.;
 
-          # buildInputs = [];
+          buildInputs = [];
         };
       in
       {
-        # packages.default = mpd-notify;
+        packages.default = mpd-notify;
 
         devShells.default = craneLib.devShell {
-          # inputsFrom = [ mpd-notify ];
+          inputsFrom = [ mpd-notify ];
 
           packages = with pkgs; [
             cargo-edit
